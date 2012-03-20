@@ -1,13 +1,19 @@
-<?
+<?php
 /**
  * Image gradient generator.
  *  Take a width or height, and strings like this:
  *   linear-gradient(top, rgba(255,255,255,.2), rgba(255,255,255,.2) 1px, rgba(255,255,255,.05) 1px, rgba(255,255,255,0) 50%, rgba(0,0,0,0) 50%, rgba(0,0,0,.05))
  *  and return an image.
  *
- * Does not handle diagonal gradients, hsl syntax, or the legacy webkit syntax
- * (c) 2012 Andy VanWagoner
+ * Does not handle diagonal gradients, or the legacy webkit syntax
+ *
+ * Example:
+ *  $grad = new LinearGradient('linear-gradient(top, hsla(120,100%,50%,.5), #f00, rgba(255,255,255,0))');
+ *  $grad->render(100, 100, 'png', 'test.png');
+ *
+ * Copyright (c) 2012 Andy VanWagoner
  * Licensed under MIT and BSD Licenses
+ * https://github.com/thetalecrafter/php-utils
  **/
 
 class LinearGradient {
@@ -423,7 +429,3 @@ class LinearGradient {
 		'yellowgreen' => '#9ACD32'
 	);
 }
-
-//$grad = new LinearGradient('linear-gradient(top, rgba(255, 255 ,255,.2), rgba(255,255 , 255,.2) 1px, rgba( 255,255,255,.05 ) 1px, rgba (255,255,255,0) 50%, rgba(0,0,0,0) 50%, rgba(0,0,0,.05))');
-//$grad->render(100, 100, 'png', 'test.png');
-
