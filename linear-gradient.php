@@ -19,8 +19,8 @@
 class LinearGradient {
 
 	protected
-		$string = 'linear-gradient(left,#000,#fff)',
-		$dir = 'left',
+		$string = 'linear-gradient(#000,#fff)',
+		$dir = 'to bottom',
 		$stops = array();
 
 	public function __construct($linear_gradient='') {
@@ -63,6 +63,7 @@ class LinearGradient {
 	}
 
 	public function render_gd($width, $height) {
+		// $angle = $this->parse_angle($this->dir, $width, $height);
 		switch ($this->dir) {
 			case 'top': case 'to bottom': $x_step = 0;  $y_step = 1;  break;
 			case 'bottom': case 'to top': $x_step = 0;  $y_step = -1; break;
@@ -155,7 +156,7 @@ class LinearGradient {
 	protected function to_pixels($pos, $size) {
 		if (is_numeric($pos)) return floor($pos);
 		if ($pos->unit == '%') return floor($pos->value / 100 * $size);
-		if (array_key_exists($pos->unit, $this->abs_units)) {
+		if (isset($this->abs_units[$pos->unit])) {
 			return floor($pos->value * $this->abs_units[$pos->unit]);
 		}
 		return false;
@@ -182,7 +183,7 @@ class LinearGradient {
 
 		$stops = explode(',', $params);
 		if (empty($stops)) throw new Exception(2, 'must have at least one parameter');
-		if ( ! preg_match('/^#|^rgb|^hsl/', $stops[0])) {
+		if ( ! preg_match('/^(#|rgb|hsl)/', $stops[0])) {
 			$this->dir = trim($stops[0]);
 			$stops = array_slice($stops, 1);
 		}
@@ -196,37 +197,84 @@ class LinearGradient {
 		$this->stops = $stops;
 	}
 
-	protected $abs_units = array( 'px'=>1, 'in'=>96, 'mm'=>3.77952756, 'cm'=>37.7952756, 'pt'=>1.3333333, 'pc'=>16 );
 
+	/**
+	 * Code to parse angles
+	 **/
+	protected function parse_angle($angle, $width, $height) {
+		if (isset($this->side_angles[$angle])) return $this->side_angles[$angle];
+
+		if (isset($this->corner_angles[$angle])) {
+			$dir = $this->corner_angles[$angle];
+			switch ($dir) {
+				case 'lt': return M_PI + M_PI_2 + atan($height / $width);
+				case 'rt': return atan($width / $height);
+				case 'rb': return M_PI_2 + atan($height / $width);
+				case 'lb': return M_PI + atan($width / $height);
+				default: break;
+			}
+		}
+
+		preg_match('/^([0-9.]+)([%a-z]+)$/i', $angle, $matches);
+		if ($matches && isset($this->angle_units[$matches[2]])) {
+			return ($matches[1] * $this->angle_units[$matches[2]]) % (M_PI * 2); // bound between 0 and 2 pi
+		}
+
+		return false;
+	}
+
+	protected $side_angles = array(
+		'top'=>M_PI, 'to bottom'=>M_PI,
+		'bottom'=>0, 'to top'=>0,
+		'left'=>M_PI_2, 'to right'=>M_PI_2,
+		'right'=>M_PI_2+M_PI, 'to left'=>M_PI_2+M_PI,
+	);
+
+	protected $corner_angles = array(
+		'right bottom'=>'lt', 'bottom right'=>'lt', 'to left top'=>'lt', 'to top left'=>'lt',
+		'left bottom'=>'rt', 'bottom left'=>'rt', 'to right top'=>'rt', 'ro top right'=>'rt',
+		'left top'=>'rb', 'top left'=>'rb', 'to right bottom'=>'rb', 'to bottom right'=>'rb',
+		'right top'=>'lb', 'top right'=>'lb', 'to left bottom'=>'lb', 'to bottom left'=>'lb'
+	);
+
+	protected $angle_units = array( 'rad'=>1, 'deg'=>M_PI/180, 'turn'=>M_PI*2, 'grad'=>M_PI/200 );
+
+
+	/**
+	 * Code to parse color stops = colors, lengths, and percentages
+	 **/
 	protected function parse_stop($stop) {
 		$stop = explode(' ', $stop);
-
 		$color = $this->parse_color($stop[0]);
+		$pos = $this->parse_length($stop[1]);
+		return (object)array( 'color'=>$color, 'position'=>$pos );
+	}
 
+	protected function parse_length($length) {
 		$pos = null;
-		if (isset($stop[1])) {
-			preg_match('/^([0-9.]+)([%a-z]*)$/i', $stop[1], $matches);
+		if (is_numeric($length)) {
+			$pos = (object)array( 'value'=>($length * 100), 'unit'=>'%' );
+		} else if (isset($length)) {
+			preg_match('/^([0-9.]+)([%a-z]+)$/i', $length, $matches);
 			if ($matches) {
-				if (array_key_exists($matches[2], $this->abs_units)) {
+				if (isset($this->abs_units[$matches[2]])) {
 					$pos = (object)array( 'value'=>(float)$matches[1], 'unit'=>$matches[2] );
 				} else if ($matches[2] === '%') {
 					$pos = (object)array( 'value'=>(float)$matches[1], 'unit'=>'%' );
 				}
 			}
-			if ( ! $pos) {
-				$pos = (object)array( 'value'=>($stop[1] * 100), 'unit'=>'%' );
-			}
 		}
-
-		return (object)array( 'color'=>$color, 'position'=>$pos );
+		return $pos;
 	}
+
+	protected $abs_units = array( 'px'=>1, 'in'=>96, 'mm'=>3.77952756, 'cm'=>37.7952756, 'pt'=>1.3333333, 'pc'=>16 );
 
 	public function parse_color($color) {
 		if (isset($this->named_colors[$color])) $color = $this->named_colors[$color];
 		if ($color[0] == '#') return $this->parse_hex($color);
 		if ($color[0] == 'r') return $this->parse_rgb($color);
 		if ($color[0] == 'h') return $this->parse_hsl($color);
-		return null;
+		return false;
 	}
 
 	public function parse_hex($hex) {
