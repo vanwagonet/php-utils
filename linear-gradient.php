@@ -5,7 +5,7 @@
  *   linear-gradient(top, rgba(255,255,255,.2), rgba(255,255,255,.2) 1px, rgba(255,255,255,.05) 1px, rgba(255,255,255,0) 50%, rgba(0,0,0,0) 50%, rgba(0,0,0,.05))
  *  and return an image.
  *
- * Does not handle diagonal gradients, or the legacy webkit syntax
+ * Does not handle the legacy webkit syntax
  *
  * Example:
  *  $grad = new LinearGradient('linear-gradient(top, hsla(120,100%,50%,.5), #f00, rgba(255,255,255,0))');
@@ -63,29 +63,19 @@ class LinearGradient {
 	}
 
 	public function render_gd($width, $height) {
-		// $angle = $this->parse_angle($this->dir, $width, $height);
-		switch ($this->dir) {
-			case 'top': case 'to bottom': $x_step = 0;  $y_step = 1;  break;
-			case 'bottom': case 'to top': $x_step = 0;  $y_step = -1; break;
-			case 'right': case 'to left': $x_step = -1; $y_step = 0;  break;
-			case 'left': case 'to right': $x_step = 1;  $y_step = 0;  break;
-			default: $x_step = 1; $y_step = 0; break;
-		}
+		$angle = $this->parse_angle($this->dir, $width, $height);
 
-		$i = 0;
-		$step = $x_step ? $x_step : $y_step;
-		$end  = $x_step ? $width : $height;
-		$stops = $this->position_stops($end, $step < 0);
-
-		$image = imagecreatetruecolor($width, $height);
+		list( $gwidth, $gheight ) = $this->gradient_size($angle, $width, $height);
+		$image = imagecreatetruecolor($gwidth, $gheight);
 		imagealphablending($image, false);
 		imagesavealpha($image, true);
-
 		$transparent = imagecolorallocatealpha($image, 0, 0, 0, 0);
 		imagefill($image, 0, 0, $transparent);
 
-		$p = $stops[0]->position;
-		while ($p < $end && $p >= 0) {
+		$i = 0;
+		$stops = $this->position_stops($gheight);
+
+		for ($p = $stops[0]->position; $p < $gheight; ++$p) {
 			while (isset($stops[$i + 1]) && $stops[$i + 1]->position == $p) ++$i;
 
 			$color1 = $stops[$i]->color;
@@ -98,15 +88,49 @@ class LinearGradient {
 			$alpha = $color1->alpha + ($color2->alpha - $color1->alpha) * $t;
 			$color = imagecolorallocatealpha($image, $red, $green, $blue, 127 - ($alpha * 127));
 
-			if ($x_step) imageline($image, $p, 0, $p, $height, $color);
-			else imageline($image, 0, $p, $width, $p, $color);
-
-			$p += $step;
+			imageline($image, 0, $p, $gwidth, $p, $color);
 		}
+
+		if (abs(180 - $angle) >= .05) { // within .05 degrees of down
+			$tmp_image = imagerotate($image, 180 - $angle, $transparent);
+			imagedestroy($image);
+			$gwidth = imagesx($tmp_image);
+			$gheight = imagesy($tmp_image);
+			$image = imagecreatetruecolor($width, $height);
+			imagealphablending($image, false);
+			imagesavealpha($image, true);
+			$transparent = imagecolorallocatealpha($image, 0, 0, 0, 0);
+			imagefill($image, 0, 0, $transparent);
+			imagecopy($image, $tmp_image, 0, 0, ($gwidth - $width) / 2, ($gheight - $height) / 2, $width, $height);
+			imagedestroy($tmp_image);
+		}
+
 		return $image;
 	}
 
-	protected function position_stops($size, $invert_coord=false) {
+	protected function gradient_size($angle, $width, $height) {
+		if (abs(0 - $angle) < .05 || abs(180 - $angle) < .05 || abs(360 - $angle) < .05) return array( $width, $height );
+		if (abs(90 - $angle) < .05 || abs(270 - $angle) < .05) return array( $height, $width );
+
+		$w = $width / 2; $h = $height / 2;
+		$points = array( array( -$w, -$h ), array( $w, -$h ), array( $w, $h ), array( -$w, $h ) );
+		$sin = sin(deg2rad($angle));
+		$cos = cos(deg2rad($angle));
+		$max_x = 0; $min_x = 0;
+		$max_y = 0; $min_y = 0;
+		foreach ($points as $i => $point) {
+			$x = $point[0] * $cos - $point[1] * $sin;
+			$y = $point[0] * $sin + $point[1] * $cos;
+			$max_x = max($max_x, $x);
+			$min_x = min($min_x, $x);
+			$max_y = max($max_y, $y);
+			$min_y = min($min_y, $y);
+		}
+		// make it 4 pixels bigger to make sure we cover the corners all the way
+		return array( ceil($max_x - $min_x) + 4, ceil($max_y - $min_y) + 4 );
+	}
+
+	protected function position_stops($size) {
 		$stops = $this->stops;
 		$l = count($stops) - 1;
 		if ($l == 0) { // create end same as begining if only one specified
@@ -146,9 +170,6 @@ class LinearGradient {
 				}
 			}
 		}
-
-		// reverse stops if necessary to make the positions in the correct coordinate system
-		if ($invert_coord) { foreach ($stops as $stop) { $stop->position = $size - $stop->position - 1; } }
 
 		return $stops;
 	}
@@ -202,32 +223,38 @@ class LinearGradient {
 	 * Code to parse angles
 	 **/
 	protected function parse_angle($angle, $width, $height) {
-		if (isset($this->side_angles[$angle])) return $this->side_angles[$angle];
+		if (isset($this->side_angles[$angle])) $angle = $this->side_angles[$angle];
 
 		if (isset($this->corner_angles[$angle])) {
 			$dir = $this->corner_angles[$angle];
 			switch ($dir) {
-				case 'lt': return M_PI + M_PI_2 + atan($height / $width);
-				case 'rt': return atan($width / $height);
-				case 'rb': return M_PI_2 + atan($height / $width);
-				case 'lb': return M_PI + atan($width / $height);
+				case 'lt': return rad2deg(atan($height / $width)) + 270;
+				case 'rt': return rad2deg(atan($width / $height));
+				case 'rb': return rad2deg(atan($height / $width)) + 90;
+				case 'lb': return rad2deg(atan($width / $height)) + 180;
 				default: break;
 			}
 		}
 
-		preg_match('/^([0-9.]+)([%a-z]+)$/i', $angle, $matches);
-		if ($matches && isset($this->angle_units[$matches[2]])) {
-			return ($matches[1] * $this->angle_units[$matches[2]]) % (M_PI * 2); // bound between 0 and 2 pi
+		preg_match('/^([0-9.-]+)(g?rad|deg|turn)$/i', $angle, $matches);
+		if ($matches) {
+			switch ($matches[2]) {
+				case 'rad': return ($matches[1] / M_PI * 180) % 360;
+				case 'deg': return (float)$matches[1] % 360;
+				case 'grad': return ($matches[1] * .9) % 360;
+				case 'turn': return ($matches[1] / 360) % 360;
+				default: return false;
+			}
 		}
 
 		return false;
 	}
 
 	protected $side_angles = array(
-		'top'=>M_PI, 'to bottom'=>M_PI,
-		'bottom'=>0, 'to top'=>0,
-		'left'=>M_PI_2, 'to right'=>M_PI_2,
-		'right'=>M_PI_2+M_PI, 'to left'=>M_PI_2+M_PI,
+		'top'=>'180deg', 'to bottom'=>'180deg',
+		'bottom'=>'0deg', 'to top'=>'0deg',
+		'left'=>'90deg', 'to right'=>'90deg',
+		'right'=>'270deg', 'to left'=>'270deg'
 	);
 
 	protected $corner_angles = array(
@@ -236,9 +263,6 @@ class LinearGradient {
 		'left top'=>'rb', 'top left'=>'rb', 'to right bottom'=>'rb', 'to bottom right'=>'rb',
 		'right top'=>'lb', 'top right'=>'lb', 'to left bottom'=>'lb', 'to bottom left'=>'lb'
 	);
-
-	protected $angle_units = array( 'rad'=>1, 'deg'=>M_PI/180, 'turn'=>M_PI*2, 'grad'=>M_PI/200 );
-
 
 	/**
 	 * Code to parse color stops = colors, lengths, and percentages
@@ -477,3 +501,4 @@ class LinearGradient {
 		'yellowgreen' => '#9ACD32'
 	);
 }
+
