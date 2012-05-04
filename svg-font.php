@@ -1,7 +1,7 @@
 <?php
 /**
  * SVG Font generator.
- *  Takes a map of char => path pairs and generates a font file.
+ *  Takes a list of char => path mapping pairs and generates a font file.
  *  The generated font can then be converted to all web formats
  *   by a tool like fontsquirrel.com/fontface/generator.
  *
@@ -9,14 +9,15 @@
  * Example:
  *  $glyphs = array(
  *    array( 'file'=>'letters/a.svg#lower', 'char'=>'a', 'width'=>64, 'height'=>64 ),
- *    array( 'file'=>'letters/a.svg#upper', 'char'=>65 ),
+ *    array( 'file'=>'letters/a.svg#upper', 'char'=>chr(65) ),
  *  );
  *
  *  $font = new SVGFont('AwesomeBold');
  *
  *  $font->add($glyphs);
  *  $font->add(array( 'file'=>'letters/b.svg#lower', 'char'=>'&#x0062;' ));
- *  $font->add('letters/b.svg#upper', 'B');
+ *  $font->add('B', 'letters/b.svg#upper');
+ *  $font->add('I', 'm14,2v12h4v-12z');
  *
  *  $font->glyph_width = 16;
  *  $font->glyph_height = 16;
@@ -49,8 +50,19 @@ class SVGFont {
 		$this->name = $name;
 	}
 
-	public function add() {
-		htmlentities($char, ENT_QUOTES | ENT_XML1);
+	public function add($char, $path) {
+		if (empty($char)) return;
+		if (is_array($char)) {
+			$glyphs = empty($char['char']) ? $char : array( $char );
+		} else {
+			$key = stripos($path, '.svg') === false ? 'path' : 'file';
+			$glyphs = array( array( 'char'=>$char, $key=>$path ) );
+		}
+		foreach ($glyphs as $glyph) {
+			$glyph['char'] = htmlentities($glyph['char'], ENT_QUOTES | ENT_XML1, 'UTF-8', false);
+			$this->glyphs[] = $glyph;
+		}
+		return $this;
 	}
 
 	public function save_glyph($glyph) {
@@ -59,9 +71,9 @@ class SVGFont {
 			$svg = new SimpleXMLElement($file, 0, true);
 			if ( ! empty($id)) {
 				$elms = $svg->xpath("//path[@d][@id='$id']");
-				$d = $elms[0]['d'];
+				$d = $this->to_path($elms[0], $svg);
 			} else {
-				$d = $svg->path['d'];
+				$d = $this->to_path($svg->path, $svg);
 			}
 		} else if ( ! empty($glyph['path'])) {
 			$d = $glyph['path'];
@@ -75,6 +87,14 @@ class SVGFont {
 		$parsed = $this->transform_path($parsed, $height, $descent);
 		$path = $this->path_string($parsed, $scale);
 		echo "\t\t\t<glyph unicode=\"{$glyph['char']}\" d=\"", wordwrap($path, 150, "\n\t\t\t\t"), "\" />\n";
+	}
+
+	public function to_path($elm, $svg) {
+		$tag = strtolower($elm->getName());
+		if ($tag === 'path') return $elm['d'];
+		$fn = $tag.'_to_path';
+		if (method_exists($this, $fn)) return $this->$fn($elm, $svg);
+		return '';
 	}
 
 	/**
@@ -216,7 +236,7 @@ class SVGFont {
 		$all = '';
 		foreach ($this->glyphs as $glyph) {
 			$all .= $glyph['char'];
-			$this->save_glyph($glyph);
+			echo $this->save_glyph($glyph);
 		}
 		echo '		</font>',"\n",
 			'	</defs>',"\n",
@@ -225,5 +245,20 @@ class SVGFont {
 
 		if ($file) file_put_contents($file, ob_get_flush());
 	}
+
+	public static function folder($name) {
+	}
+}
+
+// command line use
+if (!empty($argv) && realpath(__FILE__) === realpath($argv[0])) {
+	$name = trim($argv[1]);
+	if ($name) SVGFont::folder($name);
+}
+
+// direct request use
+if (empty($argv) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
+	$name = trim($_SERVER['PATH_INFO']);
+	if ($name) SVGFont::folder($name);
 }
 
