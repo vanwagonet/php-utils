@@ -68,13 +68,12 @@ class SVGFont {
 	public function save_glyph($glyph) {
 		if ( ! empty($glyph['file'])) {
 			list( $file, $id ) = explode('#', $glyph['file'], 2);
-			$svg = new SimpleXMLElement($file, 0, true);
-			if ( ! empty($id)) {
-				$elms = $svg->xpath("//path[@d][@id='$id']");
-				$d = $this->to_path($elms[0], $svg);
-			} else {
-				$d = $this->to_path($svg->path, $svg);
-			}
+			$file = implode(gzfile($glyph['file']));
+			$svg = new SimpleXMLElement($file);
+			$svg->registerXPathNamespace('svg', 'http://www.w3.org/2000/svg');
+			$xpath = empty($id) ? '//svg:path' : "//[@id='$id']";
+			$path = $svg->xpath($xpath);
+			$d = $this->to_path($path[0], $svg);
 		} else if ( ! empty($glyph['path'])) {
 			$d = $glyph['path'];
 		}
@@ -90,6 +89,7 @@ class SVGFont {
 	}
 
 	public function to_path($elm, $svg) {
+		if (empty($elm)) return '';
 		$tag = strtolower($elm->getName());
 		if ($tag === 'path') return $elm['d'];
 		$fn = $tag.'_to_path';
@@ -105,7 +105,7 @@ class SVGFont {
 		$l = strlen($d);
 		$path = array();
 
-		for ($i = 0; $i < $l; ++$i) {
+		for ($i = 0; $i < $l; ) {
 			while ($i < $l && (ctype_space($d[$i]) || $d[$i]===',')) ++$i;
 
 			if (ctype_alpha($d[$i])) {
@@ -136,7 +136,7 @@ class SVGFont {
 	 * Mirror and adjust to baseline
 	 **/
 	protected function transform_path($path, $height, $descent) {
-		$top = ($height - $descent);
+		$top = ($height + $descent);
 		foreach ($path as $i => $args) {
 			switch ($args[0]) {
 				case 'A':
@@ -198,7 +198,7 @@ class SVGFont {
 			}
 			$type = $args[0];
 			$args = array_slice($args, 1);
-			if (strtolower($prev) == 'a') {
+			if (strtolower($type) == 'a') {
 				$args[0] = intval($args[0] * $scale);
 				$args[1] = intval($args[1] * $scale);
 			//	$args[2] = ($args[0] == $args[1]) ? 0 : $args[2]; // done in transform
@@ -209,7 +209,7 @@ class SVGFont {
 			} else {
 				foreach($args as $i => $v) { $args[$i] = intval($v * $scale); }
 			}
-			$d .= implode(',', $d);
+			$d .= implode(',', $args);
 		}
 		return trim($d);
 	}
@@ -240,25 +240,51 @@ class SVGFont {
 		}
 		echo '		</font>',"\n",
 			'	</defs>',"\n",
-			'	<text x="',$width,'" y="',$height,'" font-family="',$this->name,'">',$all,'</text>',"\n",
+			'	<text x="0" y="32" font-family="',$this->name,'" font-size="32pt">',$all,'</text>',"\n",
 			'</svg>',"\n";
 
 		if ($file) file_put_contents($file, ob_get_flush());
 	}
 
-	public static function folder($name) {
+	public static function folder($folder, $width=null, $height=null, $descent=null) {
+		if (substr($folder, -1) == '/') $folder = substr($folder, 0, -1);
+		$files = scandir($folder);
+		if (empty($files)) return;
+
+		$font = new SVGFont(basename($folder));
+		if (isset($width)) $font->glyph_width = $width;
+		if (isset($height)) $font->glyph_height = $height;
+		if (isset($descent)) $font->glyph_descent = $descent;
+
+		$folder .= '/';
+		foreach ($files as $file) {
+			if (stripos($file, '.svg') === false) continue;
+			$char = reset(explode('.', $file));
+			if (strlen($char) > 1) {
+				if ( ! preg_match('/^[0-9a-f]+$/i', $char)) continue;
+				$char = '&#'.$char.';';
+			}
+			$font->add($char, $folder . $file);
+		}
+		$font->save();
 	}
 }
 
 // command line use
 if (!empty($argv) && realpath(__FILE__) === realpath($argv[0])) {
 	$name = trim($argv[1]);
-	if ($name) SVGFont::folder($name);
+	$width = empty($argv[2]) ? null : (float)$argv[2];
+	$height = empty($argv[3]) ? null : (float)$argv[3];
+	$descent = isset($argv[4]) ? (float)$argv[4] : null;
+	if ($name) SVGFont::folder($name, $width, $height, $descent);
 }
 
 // direct request use
 if (empty($argv) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
 	$name = trim($_SERVER['PATH_INFO']);
-	if ($name) SVGFont::folder($name);
+	$width = empty($_GET['width']) ? null : (float)$_GET['width'];
+	$height = empty($_GET['height']) ? null : (float)$_GET['height'];
+	$descent = isset($_GET['descent']) ? (float)$_GET['descent'] : null;
+	if ($name) SVGFont::folder($name, $width, $height, $descent);
 }
 
