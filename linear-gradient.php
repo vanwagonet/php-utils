@@ -5,7 +5,7 @@
  *   linear-gradient(top, rgba(255,255,255,.2), rgba(255,255,255,.2) 1px, rgba(255,255,255,.05) 1px, rgba(255,255,255,0) 50%, rgba(0,0,0,0) 50%, rgba(0,0,0,.05))
  *  and return an image.
  *
- * Does not handle the legacy webkit syntax
+ * Does not handle the legacy webkit syntax, but can handle sides specified without 'to'
  *
  * Example:
  *  $grad = new LinearGradient('linear-gradient(top, hsla(120,100%,50%,.5), #f00, rgba(255,255,255,0))');
@@ -69,11 +69,16 @@ class LinearGradient {
 		$image = imagecreatetruecolor($gwidth, $gheight);
 		imagealphablending($image, false);
 		imagesavealpha($image, true);
-		$transparent = imagecolorallocatealpha($image, 0, 0, 0, 0);
+		$transparent = imagecolorallocatealpha($image, 0, 0, 0, 127);
 		imagefill($image, 0, 0, $transparent);
 
 		$i = 0;
 		$stops = $this->position_stops($gheight);
+		foreach ($stops as $stop) {
+			$stop->color->red *= $stop->color->alpha;
+			$stop->color->green *= $stop->color->alpha;
+			$stop->color->blue *= $stop->color->alpha;
+		}
 
 		for ($p = $stops[0]->position; $p < $gheight; ++$p) {
 			while (isset($stops[$i + 1]) && $stops[$i + 1]->position == $p) ++$i;
@@ -82,10 +87,10 @@ class LinearGradient {
 			$color2 = $stops[$i + 1]->color;
 			$distance = $stops[$i]->position - $stops[$i + 1]->position;
 			$t = abs(($p - $stops[$i]->position) / $distance);
-			$red = $color1->red + ($color2->red - $color1->red) * $t;
-			$green = $color1->green + ($color2->green - $color1->green) * $t;
-			$blue = $color1->blue + ($color2->blue - $color1->blue) * $t;
 			$alpha = $color1->alpha + ($color2->alpha - $color1->alpha) * $t;
+			$red = $alpha ? ($color1->red + ($color2->red - $color1->red) * $t) / $alpha : 0;
+			$green = $alpha ? ($color1->green + ($color2->green - $color1->green) * $t) / $alpha : 0;
+			$blue = $alpha ? ($color1->blue + ($color2->blue - $color1->blue) * $t) / $alpha : 0;
 			$color = imagecolorallocatealpha($image, $red, $green, $blue, 127 - ($alpha * 127));
 
 			imageline($image, 0, $p, $gwidth, $p, $color);
@@ -93,6 +98,8 @@ class LinearGradient {
 
 		if (abs(180 - $angle) >= .05) { // within .05 degrees of down
 			$tmp_image = imagerotate($image, 180 - $angle, $transparent);
+			imagealphablending($tmp_image, false);
+			imagesavealpha($tmp_image, true);
 			imagedestroy($image);
 			$gwidth = imagesx($tmp_image);
 			$gheight = imagesy($tmp_image);
@@ -204,7 +211,7 @@ class LinearGradient {
 
 		$stops = explode(',', $params);
 		if (empty($stops)) throw new Exception(2, 'must have at least one parameter');
-		if ( ! preg_match('/^(#|rgb|hsl)/', $stops[0])) {
+		if ( ! $this->parse_color($stops[0])) {
 			$this->dir = trim($stops[0]);
 			$stops = array_slice($stops, 1);
 		}
@@ -270,7 +277,7 @@ class LinearGradient {
 	protected function parse_stop($stop) {
 		$stop = explode(' ', $stop);
 		$color = $this->parse_color($stop[0]);
-		$pos = $this->parse_length($stop[1]);
+		$pos = $this->parse_length(isset($stop[1]) ? $stop[1] : null);
 		return (object)array( 'color'=>$color, 'position'=>$pos );
 	}
 
@@ -295,9 +302,9 @@ class LinearGradient {
 
 	public function parse_color($color) {
 		if (isset($this->named_colors[$color])) $color = $this->named_colors[$color];
-		if ($color[0] == '#') return $this->parse_hex($color);
-		if ($color[0] == 'r') return $this->parse_rgb($color);
-		if ($color[0] == 'h') return $this->parse_hsl($color);
+		if ($color[0] === '#') return $this->parse_hex($color);
+		if (stripos($color[0], 'rgb') === 0) return $this->parse_rgb($color);
+		if (stripos($color[0], 'hsl') === 0) return $this->parse_hsl($color);
 		return false;
 	}
 

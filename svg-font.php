@@ -261,7 +261,7 @@ class SVGFont {
 			if (stripos($file, '.svg') === false) continue;
 			$char = reset(explode('.', $file));
 			if (strlen($char) > 1) {
-				if ( ! preg_match('/^[0-9a-f]+$/i', $char)) continue;
+				if ( ! preg_match('/^x?[0-9a-f]+$/i', $char)) continue;
 				$char = '&#'.$char.';';
 			}
 			$font->add($char, $folder . $file);
