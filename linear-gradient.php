@@ -239,6 +239,10 @@ class LinearGradient {
 				case 'rt': return rad2deg(atan($width / $height));
 				case 'rb': return rad2deg(atan($height / $width)) + 90;
 				case 'lb': return rad2deg(atan($width / $height)) + 180;
+				case 'tlt': return rad2deg(atan($width / $height)) + 270;
+				case 'trt': return rad2deg(atan($height / $width));
+				case 'trb': return rad2deg(atan($width / $height)) + 90;
+				case 'tlb': return rad2deg(atan($height / $width)) + 180;
 				default: break;
 			}
 		}
@@ -265,10 +269,10 @@ class LinearGradient {
 	);
 
 	protected $corner_angles = array(
-		'right bottom'=>'lt', 'bottom right'=>'lt', 'to left top'=>'lt', 'to top left'=>'lt',
-		'left bottom'=>'rt', 'bottom left'=>'rt', 'to right top'=>'rt', 'ro top right'=>'rt',
-		'left top'=>'rb', 'top left'=>'rb', 'to right bottom'=>'rb', 'to bottom right'=>'rb',
-		'right top'=>'lb', 'top right'=>'lb', 'to left bottom'=>'lb', 'to bottom left'=>'lb'
+		'right bottom'=>'lt', 'bottom right'=>'lt', 'to left top'=>'tlt', 'to top left'=>'tlt',
+		'left bottom'=>'rt', 'bottom left'=>'rt', 'to right top'=>'trt', 'to top right'=>'trt',
+		'left top'=>'rb', 'top left'=>'rb', 'to right bottom'=>'trb', 'to bottom right'=>'trb',
+		'right top'=>'lb', 'top right'=>'lb', 'to left bottom'=>'tlb', 'to bottom left'=>'tlb'
 	);
 
 	/**
@@ -508,4 +512,3 @@ class LinearGradient {
 		'yellowgreen' => '#9ACD32'
 	);
 }
-
