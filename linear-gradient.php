@@ -211,15 +211,13 @@ class LinearGradient {
 
 		$stops = explode(',', $params);
 		if (empty($stops)) throw new Exception(2, 'must have at least one parameter');
+		foreach ($stops as $i => $stop) { $stops[$i] = str_replace('~', ',', trim($stop)); } // unswap comma and tilde
 		if ( ! $this->parse_color($stops[0])) {
 			$this->dir = trim($stops[0]);
 			$stops = array_slice($stops, 1);
 		}
 
-		foreach ($stops as $i => $stop) {
-			$stop = str_replace('~', ',', trim($stop)); // unswap comma and tilde
-			$stops[$i] = $this->parse_stop($stop);
-		}
+		foreach ($stops as $i => $stop) { $stops[$i] = $this->parse_stop($stop); }
 
 		$this->string = $linear_gradient;
 		$this->stops = $stops;
@@ -307,8 +305,8 @@ class LinearGradient {
 	public function parse_color($color) {
 		if (isset($this->named_colors[$color])) $color = $this->named_colors[$color];
 		if ($color[0] === '#') return $this->parse_hex($color);
-		if (stripos($color[0], 'rgb') === 0) return $this->parse_rgb($color);
-		if (stripos($color[0], 'hsl') === 0) return $this->parse_hsl($color);
+		if (stripos($color, 'rgb') === 0) return $this->parse_rgb($color);
+		if (stripos($color, 'hsl') === 0) return $this->parse_hsl($color);
 		return false;
 	}
 
